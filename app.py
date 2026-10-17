@@ -1,4 +1,5 @@
 import base64
+from html import escape as esc
 from pathlib import Path
 
 import joblib
@@ -12,6 +13,7 @@ import streamlit.components.v1 as components
 MODEL_PATH = Path(__file__).parent / "model.pkl"
 FEATURE_COLUMNS = ["studytime", "absences", "G1"]  # must match training order
 PASS_MARK = 10  # G3 >= 10 counts as passing
+GEMINI_MODEL = "gemini-2.5-flash"  # copy the current model name from Google's quickstart if this one is retired
 
 PASS_COLOR = "#2f8f5b"  # circle colour when the student is on track
 FAIL_COLOR = "#d64545"  # circle colour when the student is at risk
@@ -41,6 +43,36 @@ st.set_page_config(
 def html(block: str) -> None:
     flat = " ".join(line.strip() for line in block.strip().splitlines() if line.strip())
     st.markdown(flat, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# GEMINI OUTLINE
+# The key lives in Streamlit secrets (GEMINI_API_KEY), never in the code.
+# Cached, so the same inputs never call the API twice. Errors are raised (and
+# therefore not cached) and handled by the caller.
+# ---------------------------------------------------------------------------
+@st.cache_data(show_spinner=False, ttl=3600)
+def gemini_outline(studytime, g1, method, assignment, absences, passed, estimate):
+    from google import genai
+
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    prompt = (
+        "You are a friendly academic coach. A student gave these early-semester "
+        f"metrics: weekly study time level {studytime} (1: <2h, 2: 2-5h, 3: 5-10h, "
+        f"4: >10h), first period grade G1 {g1}/20, method of completion {method}, "
+        f"assignment grade {assignment}%, absences {absences}. A simple model "
+        f"estimates they are {'on track to pass' if passed else 'at risk of failing'} "
+        f"({estimate}). Write a short study outline: 3 to 4 bullet points, each one "
+        "sentence, specific and encouraging. Plain text only. Start every line "
+        "with the character •. No headings, no markdown."
+    )
+    resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    return resp.text.strip()
+
+
+def outline_to_html(text: str) -> str:
+    lines = [esc(l.strip().lstrip("*-").strip()) for l in text.splitlines() if l.strip()]
+    return "".join(f"<p>{l if l.startswith('•') else '• ' + l}</p>" for l in lines)
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +439,7 @@ with left_col:
             "Absences:",
             min_value=0, max_value=93, value=4, step=1,
         )
+        want_outline = st.button("Generate Gemini outline", use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # PREDICTION
@@ -461,6 +494,34 @@ else:
         "to improve your academic performance."
     )
 
+# GEMINI OUTLINE (only runs when the button is pressed)
+inputs_key = (studytime, g1, completion_method, assignment_grade, absences)
+if want_outline:
+    try:
+        text = gemini_outline(
+            studytime, g1, completion_method, assignment_grade, absences,
+            passed, headline_value,
+        )
+        st.session_state["outline"] = {"key": inputs_key, "text": text, "error": None}
+    except Exception as exc:
+        st.session_state["outline"] = {
+            "key": inputs_key, "text": None,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+saved = st.session_state.get("outline")
+outline_html = None
+outline_note = ""
+if saved and saved["key"] == inputs_key:
+    if saved["text"]:
+        outline_html = outline_to_html(saved["text"])
+    else:
+        outline_note = f"<p><i>Gemini unavailable ({esc(saved['error'])}).</i></p>"
+elif saved:
+    outline_note = "<p><i>Inputs changed. Press the button to refresh the outline.</i></p>"
+
+body_html = outline_html if outline_html else f"<p>• {advice}</p>"
+
 # RIGHT: OUTPUT CARD
 with right_col:
     with st.container(key="output-card"):
@@ -498,7 +559,8 @@ with right_col:
                     <div class="prediction-details">
                         <p>{status_line}</p>
                         <p>• {detail_line}</p>
-                        <p>• {advice}</p>
+                        {body_html}
+                        {outline_note}
                     </div>
                 </div>
                 """
