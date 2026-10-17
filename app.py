@@ -218,7 +218,7 @@ div[data-baseweb="popover"] li[role="option"]:hover { background: #eee !importan
     box-sizing: border-box;
 }
 /* Inside the output card, drop Streamlit's wrapper divs so the pill, circle and
-    outline box become direct flex children and can stretch to fill the card */
+   outline box become direct flex children and can stretch to fill the card */
 .st-key-output-card [data-testid="stElementContainer"],
 .st-key-output-card [data-testid="element-container"],
 .st-key-output-card [data-testid="stMarkdown"],
@@ -234,4 +234,393 @@ div[data-baseweb="popover"] li[role="option"]:hover { background: #eee !importan
 .st-key-output-card [data-testid="stColumn"] > div,
 .st-key-output-card [data-testid="column"] > div { flex: 1 1 auto !important; }
 
-.predicted-
+.predicted-output-pill {
+    width: 100%;
+    box-sizing: border-box;
+    background: #56bc6c;
+    border: 4px solid #fff;
+    border-radius: 999px;
+    padding: 14px 18px;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    line-height: 1.2;
+    color: #d9d9d9;
+    font-family: "Finger Paint", cursive;
+    font-size: clamp(20px, 2.8vw, 46px);
+}
+
+/* PASS / FAIL circle */
+.circle-status {
+    width: min(100%, 300px);
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    margin: 14px auto 0 auto;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    font-size: clamp(18px, 1.9vw, 30px);
+    font-weight: 800;
+}
+.circle-probability { font-size: clamp(14px, 1.2vw, 18px); font-weight: 600; margin-top: 4px; }
+.circle-caption { font-size: 12px; font-weight: 400; margin-top: 2px; opacity: 0.9; }
+
+/* Big outline box */
+.gemini-outline-box {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 420px;
+    box-sizing: border-box;
+    background: #326f51;
+    border: 4px solid #fff;
+    border-radius: 40px;
+    padding: 18px 24px 24px 24px;
+    color: #f5f5f5;
+}
+.gemini-title {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0 auto 16px auto;
+    background: #3c6324;
+    border: 4px solid #fff;
+    border-radius: 999px;
+    padding: 8px 36px;
+    text-align: center;
+    color: #d9d9d9;
+    font-family: "Finger Paint", cursive;
+    font-size: clamp(20px, 2.3vw, 38px);
+}
+.prediction-details {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #f5f5f5;
+    margin-top: 12px;
+}
+.prediction-details p { margin: 0 0 16px 0; }
+
+/* Demo-mode notice */
+.demo-banner {
+    background: #fff3cd;
+    color: #5c4400;
+    border-radius: 20px;
+    padding: 10px 18px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+    .block-container, [data-testid="stMainBlockContainer"] { padding: 1rem 1rem 2rem 1rem; }
+    .st-key-input-card, .st-key-output-card { min-height: auto !important; }
+    .st-key-output-card { padding: 16px; }
+    .circle-status { width: 160px; }
+    .gemini-outline-box { min-height: 300px; border-radius: 30px; }
+}
+"""
+html(f"<style>{CSS}</style>")
+
+# Fallback heights: only used if a card's content is shorter than this.
+# (The cards normally stretch to match each other on their own.)
+INPUT_MIN_H, OUTPUT_MIN_H = (560, 760) if HEADER_IN_LEFT_COLUMN else (680, 680)
+html(
+    f"<style>.st-key-input-card {{ min-height: {INPUT_MIN_H}px; }} "
+    f".st-key-output-card {{ min-height: {OUTPUT_MIN_H}px; }}</style>"
+)
+
+# Sound on/off (open the small arrow at the top-left to find it)
+sound_on = st.sidebar.toggle("Sound effects", value=True)
+
+
+# ---------------------------------------------------------------------------
+# LOAD MODEL (joblib.load also reads plain pickle files)
+# ---------------------------------------------------------------------------
+@st.cache_resource
+def load_model():
+    try:
+        return joblib.load(MODEL_PATH), None
+    except Exception as exc:  # missing file, version mismatch, corrupt file...
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+model, load_error = load_model()
+
+
+# ---------------------------------------------------------------------------
+# HEADER
+# ---------------------------------------------------------------------------
+def render_header() -> None:
+    html('<div class="header-title">Grade Predictor</div>')
+    html(
+        """
+        <div class="header-subtitle">
+            Enter your early-semester metrics and test how changing your
+            study habits impacts your final grade.
+        </div>
+        """
+    )
+
+
+if not HEADER_IN_LEFT_COLUMN:
+    render_header()
+
+# ---------------------------------------------------------------------------
+# MAIN LAYOUT
+# ---------------------------------------------------------------------------
+left_col, right_col = st.columns([0.9, 1.4], gap="large")
+
+# LEFT: (HEADER) + INPUT CARD
+with left_col:
+    if HEADER_IN_LEFT_COLUMN:
+        render_header()
+
+    with st.container(key="input-card"):
+        html('<div class="section-heading">Input Metrics</div>')
+
+        studytime = st.number_input(
+            "Weekly Hours Studied (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h):",
+            min_value=1, max_value=4, value=2, step=1,
+        )
+        g1 = st.number_input(
+            "Grades (G1 - First Period Grade 0-20):",
+            min_value=0, max_value=20, value=12, step=1,
+        )
+        # NOT used by the model yet. Wire these into the "honesty layer"
+        # (weighted assignment average) before feeding the model.
+        completion_method = st.selectbox(
+            "Method of Completion:",
+            options=["Standard", "Self-Study", "Group Study", "Tutoring"],
+        )
+        assignment_grade = st.number_input(
+            "Assignment Grade (0-100%):",
+            min_value=0, max_value=100, value=85, step=5,
+        )
+        absences = st.number_input(
+            "Absences:",
+            min_value=0, max_value=93, value=4, step=1,
+        )
+
+# ---------------------------------------------------------------------------
+# PREDICTION
+# ---------------------------------------------------------------------------
+demo_mode = model is None
+headline_value = ""   # big text inside the circle
+caption = ""          # small label under it
+detail_line = ""      # bullet in the outline box
+
+if not demo_mode:
+    try:
+        X = pd.DataFrame([[studytime, absences, g1]], columns=FEATURE_COLUMNS)
+        if hasattr(model, "predict_proba"):
+            # Classifier: probability of the "passed" class
+            prob = float(model.predict_proba(X)[0][1]) * 100
+            passed = prob >= 50
+            headline_value = f"{prob:.0f}%"
+            caption = "pass probability"
+            detail_line = f"Current Pass Probability: <b>{prob:.1f}%</b>"
+        else:
+            # Regressor: predicts the final grade (G3) directly
+            grade = float(model.predict(X)[0])
+            passed = grade >= PASS_MARK
+            headline_value = f"{grade:.1f}/20"
+            caption = "predicted final grade"
+            detail_line = f"Predicted Final Grade: <b>{grade:.1f}/20</b>"
+    except Exception as exc:
+        load_error = f"Model loaded but prediction failed: {type(exc).__name__}: {exc}"
+        demo_mode = True
+
+if demo_mode:
+    # Rule-of-thumb stand-in so the UI still works. NOT a trained model.
+    passed = g1 >= PASS_MARK and absences < 10
+    prob = min(95.0, max(15.0, (g1 * 4) + (studytime * 5) - (absences * 2)))
+    headline_value = f"{prob:.0f}%"
+    caption = "rough estimate"
+    detail_line = f"Rough Estimate: <b>{prob:.1f}%</b>"
+
+badge_color = PASS_COLOR if passed else FAIL_COLOR
+badge_text = "PASS" if passed else "FAIL"
+
+if passed:
+    status_line = "✅ <b>On Track to Pass!</b>"
+    advice = (
+        f"Your G1 score of <b>{g1}/20</b> and absence count "
+        f"(<b>{absences}</b>) contribute to your prediction."
+    )
+else:
+    status_line = "⚠️ <b>Risk of Failing</b>"
+    advice = (
+        "Consider increasing study time and reducing absences "
+        "to improve your academic performance."
+    )
+
+# RIGHT: OUTPUT CARD
+with right_col:
+    with st.container(key="output-card"):
+        if demo_mode:
+            reason = load_error or "model.pkl was not found next to app.py"
+            html(
+                f"""
+                <div class="demo-banner">
+                    <b>Demo mode:</b> showing a rule-of-thumb estimate, not the
+                    trained model. ({reason})
+                </div>
+                """
+            )
+
+        html('<div class="predicted-output-pill">Predicted Output</div>')
+
+        circle_col, outline_col = st.columns([0.4, 1], gap="small")
+
+        with circle_col:
+            html(
+                f"""
+                <div class="circle-status" style="background-color: {badge_color};">
+                    <div>{badge_text}</div>
+                    <div class="circle-probability">{headline_value}</div>
+                    <div class="circle-caption">{caption}</div>
+                </div>
+                """
+            )
+
+        with outline_col:
+            html(
+                f"""
+                <div class="gemini-outline-box">
+                    <div class="gemini-title">Gemini outline</div>
+                    <div class="prediction-details">
+                        <p>{status_line}</p>
+                        <p>• {detail_line}</p>
+                        <p>• {advice}</p>
+                    </div>
+                </div>
+                """
+            )
+
+
+# ---------------------------------------------------------------------------
+# SOUND EFFECTS (keep this at the END of the file)
+#
+# Put click.mp3 in the same folder as app.py. If it is missing, the app falls
+# back to a synthesized beep, so nothing breaks.
+#
+# Streamlit strips <script> tags from st.markdown, so the script rides in on a
+# zero-height component. It copies one function into the real page, where it
+# listens for clicks on the number inputs' +/- buttons (and the Up/Down arrow
+# keys). The clip is decoded once and played with the Web Audio API, which
+# allows instant playback and rapid overlapping clicks.
+# ---------------------------------------------------------------------------
+SOUND_FILE = Path(__file__).parent / "click.mp3"
+
+
+@st.cache_resource
+def load_click_sound() -> str:
+    try:
+        return base64.b64encode(SOUND_FILE.read_bytes()).decode()
+    except OSError:
+        return ""  # no file -> JS uses the synthesized beep
+
+
+SOUND_JS = """
+<script>
+(function () {
+  const P = window.parent;
+  P.__gpSoundOn = __SOUND_ON__;          // updated on every rerun (the toggle)
+  P.__gpSoundB64 = "__SOUND_B64__";      // base64 of click.mp3 ("" if missing)
+  if (P.__gpSoundsInstalled) return;     // only attach listeners once
+  P.__gpSoundsInstalled = true;
+
+  function sounds() {
+    const UP_RATE = 1.15;    // + plays the clip slightly higher/faster
+    const DOWN_RATE = 0.85;  // - plays it slightly lower/slower
+    const VOLUME = 0.9;
+
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AC();    // starts "suspended"; resumed on the first click
+    let buffer = null;
+
+    // Decode the clip once, up front
+    if (window.__gpSoundB64) {
+      try {
+        const bin = atob(window.__gpSoundB64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        ctx.decodeAudioData(bytes.buffer).then(function (b) { buffer = b; }).catch(function () {});
+      } catch (err) {}
+    }
+
+    function sample(rate) {
+      const src = ctx.createBufferSource();
+      const gain = ctx.createGain();
+      src.buffer = buffer;
+      src.playbackRate.value = rate;
+      gain.gain.value = VOLUME;
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      src.start();
+    }
+
+    // Fallback beep (used if click.mp3 is missing or still decoding)
+    function beep(from, to) {
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(from, t);
+      osc.frequency.exponentialRampToValueAtTime(to, t + 0.09);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.13);
+    }
+
+    function play(rate, from, to) {
+      if (!window.__gpSoundOn) return;
+      if (ctx.state === "suspended") ctx.resume();
+      buffer ? sample(rate) : beep(from, to);
+    }
+    const up = () => play(UP_RATE, 520, 820);
+    const down = () => play(DOWN_RATE, 520, 330);
+
+    // Delegated listeners survive Streamlit re-rendering the widgets.
+    document.addEventListener("click", function (e) {
+      const btn = e.target.closest && e.target.closest('[data-testid="stNumberInput"] button');
+      if (!btn) return;
+      const id = (btn.getAttribute("data-testid") || "").toLowerCase();
+      const cls = String(btn.className || "").toLowerCase();
+      if (id.includes("stepup") || cls.includes("step-up")) return up();
+      if (id.includes("stepdown") || cls.includes("step-down")) return down();
+      // Fallback for other Streamlit versions: first button is -, second is +
+      const all = Array.from(btn.parentElement.querySelectorAll("button"));
+      all.indexOf(btn) === 0 ? down() : up();
+    }, true);
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      if (!e.target.closest || !e.target.closest('[data-testid="stNumberInput"]')) return;
+      e.key === "ArrowUp" ? up() : down();
+    }, true);
+  }
+
+  const s = P.document.createElement("script");
+  s.textContent = "(" + sounds.toString() + ")();";
+  P.document.head.appendChild(s);
+})();
+</script>
+"""
+
+components.html(
+    SOUND_JS.replace("__SOUND_ON__", "true" if sound_on else "false")
+    .replace("__SOUND_B64__", load_click_sound()),
+    height=0,
+)
