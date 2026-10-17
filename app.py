@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 MODEL_PATH = Path(__file__).parent / "model.pkl"
 FEATURE_COLUMNS = ["studytime", "absences", "G1"]  # must match training order
 PASS_MARK = 10  # G3 >= 10 counts as passing
-GEMINI_MODEL = "gemini-2.5-flash"  # copy the current model name from Google's quickstart if this one is retired
+GEMINI_MODEL = "gemini-3.8-flash"  # copy the current model name from Google's quickstart if this one is retired
 
 PASS_COLOR = "#2f8f5b"  # circle colour when the student is on track
 FAIL_COLOR = "#d64545"  # circle colour when the student is at risk
