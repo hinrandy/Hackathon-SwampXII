@@ -11,7 +11,7 @@ import streamlit.components.v1 as components
 # ---------------------------------------------------------------------------
 # SETTINGS
 # ---------------------------------------------------------------------------
-MODEL_PATH = Path(__file__).parent / "model.pkl"
+MODEL_PATH = Path(__file__).parent / "modelG12.pkl"
 FEATURE_COLUMNS = ["studytime", "failures", "absences", "G1", "G2"]  # must match training order EXACTLY
 PASS_MARK = 10  # G3 >= 10 counts as passing
 # Tried in order; the first that answers wins. "-latest" aliases track Google's newest model of that size.
@@ -496,7 +496,7 @@ if not demo_mode:
             detail_line = f"Current Pass Probability: <b>{prob:.1f}%</b>"
         else:
             # Regressor: predicts the final grade (G3) directly
-            grade = float(model.predict(X)[0])
+            grade = max(0.0, min(20.0, float(model.predict(X)[0])))
             passed = grade >= PASS_MARK
             headline_value = f"{grade:.1f}/20"
             caption = "predicted final grade"
