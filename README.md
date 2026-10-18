@@ -28,7 +28,13 @@ Grade Predictor that helps students see whether they are on track to pass a clas
 - Google Fonts (Finger Paint, Press Start 2P).
 
 **Project Structure**
-app. py #the Streamlit app
-requirements.txt # Python packages Streamlit Cloud installs
-model.pkl # trained model
-.streamlit/confit.toml # forces the light theme
+- app. py                      #the Streamlit app
+- requirements.txt             # Python packages Streamlit Cloud installs
+- model.pkl                    # trained model
+- .streamlit/confit.toml       # forces the light theme
+
+**Use of AI Tools**
+We used Claude (Anthropic) to help brainstorm and plan the project and to help write and debug parts of the code, including the Streamlit code and the Gemini integration. The Gemini API is part of the app itself.
+
+**Limitations**
+This is a 36-hour hackathon project. The prediction is an estimate based on a small dataset, not a guarantee, and it should be used as a prompt to act, not as a final judgment for any student.
