@@ -5,7 +5,7 @@ Live App: [Streamlit Link](https://hackathon-swampxii-j5j3u6hbuwptrjehde6ffm.str
 
 This project is a Grade Predictor that helps students see whether they are on track to pass a class, early enough to do something about it. Enter a few early-semester numbers, see the prediction, and get a personalized study plan from Gemini
 
-**What It Does**
+## What It Does
 1. The student enters five inputs:
    - Study Time (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h per week)
    - Grades (G1), first-period grade, 0-20
@@ -19,7 +19,7 @@ This project is a Grade Predictor that helps students see whether they are on tr
 
 4. Pressing "Generate Gemini outline" sends the inputs and the prediction to the Gemini API, which returns a short personalized study outline.
 
-**Tech Stack**
+## Tech Stack
 - Python, pandas, scikit-learn, joblib for the data and model.
 - Google Colab for building and training the model.
 - Streamlit (hosted on Streamlit Community Cloud) for the web app, with custom CSS and HTML for the design.
@@ -34,8 +34,8 @@ requirements.txt             # Python packages Streamlit Cloud installs
 model.pkl                    # trained model
 .streamlit/config.toml       # forces the light theme
 ```
-**Use of AI Tools**\
+## Use of AI Tools\
 We used Claude (Anthropic) to help brainstorm and plan the project and to help write and debug parts of the code, including the Streamlit code and the Gemini integration. The Gemini API is part of the app itself.
 
-**Limitations**\
+## Limitations\
 This is a 36-hour hackathon project. The prediction is an estimate based on a small dataset, not a guarantee, and it should be used as a prompt to act, not as a final judgment for any student.
