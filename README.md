@@ -18,3 +18,11 @@ Grade Predictor that helps students see whether they are on track to pass a clas
 3. The student is able to change the inputs to see how different habits change the outcome.
 
 4. Pressing "Generate Gemini outline" sends the inputs and the prediction to the Gemini API, which returns a short personalized study outline.
+
+**Tech Stack**
+- Python, pandas, scikit-learn, joblib for the data and model.
+- Google Colab for building and training the model.
+- Streamlit (hosted on Streamlit Community Cloud) for the web app, with custom CSS and HTML for the design.
+- Gemini API (Google) for the study outline.
+- GitHub for version control and deployment.
+- Google Fonts (Finger Paint, Press Start 2P).
