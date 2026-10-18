@@ -26,3 +26,9 @@ Grade Predictor that helps students see whether they are on track to pass a clas
 - Gemini API (Google) for the study outline.
 - GitHub for version control and deployment.
 - Google Fonts (Finger Paint, Press Start 2P).
+
+**Project Structure**
+app. py #the Streamlit app
+requirements.txt # Python packages Streamlit Cloud installs
+model.pkl # trained model
+.streamlit/confit.toml # forces the light theme
