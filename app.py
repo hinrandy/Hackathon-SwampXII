@@ -12,7 +12,7 @@ import streamlit.components.v1 as components
 # SETTINGS
 # ---------------------------------------------------------------------------
 MODEL_PATH = Path(__file__).parent / "model.pkl"
-FEATURE_COLUMNS = ["studytime", "absences", "G1"]  # must match training order
+FEATURE_COLUMNS = ["studytime", "failures", "absences", "G1", "G2"]  # must match training order EXACTLY
 PASS_MARK = 10  # G3 >= 10 counts as passing
 # Tried in order; the first that answers wins. "-latest" aliases track Google's newest model of that size.
 GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"]
@@ -54,7 +54,7 @@ def html(block: str) -> None:
 # therefore not cached) and handled by the caller.
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner=False, ttl=3600)
-def gemini_outline(studytime, g1, method, assignment, absences, passed, estimate):
+def gemini_outline(studytime, g1, g2, failures, absences, passed, estimate):
     from google import genai
     from google.genai import types
 
@@ -65,9 +65,9 @@ def gemini_outline(studytime, g1, method, assignment, absences, passed, estimate
     )
     prompt = (
         "You are a friendly academic coach. A student gave these early-semester "
-        f"metrics: weekly study time level {studytime} (1: <2h, 2: 2-5h, 3: 5-10h, "
-        f"4: >10h), first period grade G1 {g1}/20, method of completion {method}, "
-        f"assignment grade {assignment}%, absences {absences}. A simple model "
+        f"metrics: study time level {studytime} (1: <2h, 2: 2-5h, 3: 5-10h, "
+        f"4: >10h per week), first period grade G1 {g1}/20, second period grade "
+        f"G2 {g2}/20, past class failures {failures}, absences {absences}. A simple model "
         f"estimates they are {'on track to pass' if passed else 'at risk of failing'} "
         f"({estimate}). Write a short study outline: 3 to 4 bullet points, each one "
         "sentence, specific and encouraging. Plain text only. Start every line "
@@ -452,22 +452,20 @@ with left_col:
         html('<div class="section-heading">Input Metrics</div>')
 
         studytime = st.number_input(
-            "Weekly Hours Studied (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h):",
+            "Study Time (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h per week):",
             min_value=1, max_value=4, value=2, step=1,
         )
         g1 = st.number_input(
             "Grades (G1 - First Period Grade 0-20):",
             min_value=0, max_value=20, value=12, step=1,
         )
-        # NOT used by the model yet. Wire these into the "honesty layer"
-        # (weighted assignment average) before feeding the model.
-        completion_method = st.selectbox(
-            "Method of Completion:",
-            options=["Standard", "Self-Study", "Group Study", "Tutoring"],
+        g2 = st.number_input(
+            "Grades (G2 - Second Period Grade 0-20):",
+            min_value=0, max_value=20, value=12, step=1,
         )
-        assignment_grade = st.number_input(
-            "Assignment Grade (0-100%):",
-            min_value=0, max_value=100, value=85, step=5,
+        failures = st.number_input(
+            "Failures (past class failures 0-3):",
+            min_value=0, max_value=3, value=0, step=1,
         )
         absences = st.number_input(
             "Absences:",
@@ -485,7 +483,10 @@ detail_line = ""      # bullet in the outline box
 
 if not demo_mode:
     try:
-        X = pd.DataFrame([[studytime, absences, g1]], columns=FEATURE_COLUMNS)
+        X = pd.DataFrame(
+            [{"studytime": studytime, "failures": failures, "absences": absences,
+              "G1": g1, "G2": g2}]
+        )[FEATURE_COLUMNS]
         if hasattr(model, "predict_proba"):
             # Classifier: probability of the "passed" class
             prob = float(model.predict_proba(X)[0][1]) * 100
@@ -506,8 +507,9 @@ if not demo_mode:
 
 if demo_mode:
     # Rule-of-thumb stand-in so the UI still works. NOT a trained model.
-    passed = g1 >= PASS_MARK and absences < 10
-    prob = min(95.0, max(15.0, (g1 * 4) + (studytime * 5) - (absences * 2)))
+    avg_grade = (g1 + g2) / 2
+    passed = avg_grade >= PASS_MARK and absences < 10 and failures < 2
+    prob = min(95.0, max(15.0, (avg_grade * 4) + (studytime * 5) - (absences * 2) - (failures * 10)))
     headline_value = f"{prob:.0f}%"
     caption = "rough estimate"
     detail_line = f"Rough Estimate: <b>{prob:.1f}%</b>"
@@ -518,23 +520,23 @@ badge_text = "PASS" if passed else "FAIL"
 if passed:
     status_line = "✅ <b>On Track to Pass!</b>"
     advice = (
-        f"Your G1 score of <b>{g1}/20</b> and absence count "
-        f"(<b>{absences}</b>) contribute to your prediction."
+        f"Your G1 (<b>{g1}/20</b>) and G2 (<b>{g2}/20</b>) scores and absence "
+        f"count (<b>{absences}</b>) contribute to your prediction."
     )
 else:
     status_line = "⚠️ <b>Risk of Failing</b>"
     advice = (
-        "Consider increasing study time and reducing absences "
-        "to improve your academic performance."
+        "Consider increasing study time, reducing absences and raising "
+        "your grades to improve your academic performance."
     )
 
 # GEMINI OUTLINE (only runs when the button is pressed)
-inputs_key = (studytime, g1, completion_method, assignment_grade, absences)
+inputs_key = (studytime, g1, g2, failures, absences)
 if want_outline:
     try:
         with st.spinner("Asking Gemini..."):
             text = gemini_outline(
-                studytime, g1, completion_method, assignment_grade, absences,
+                studytime, g1, g2, failures, absences,
                 passed, headline_value,
             )
         st.session_state["outline"] = {"key": inputs_key, "text": text, "error": None}
