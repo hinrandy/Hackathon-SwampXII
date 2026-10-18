@@ -1,4 +1,4 @@
-# Hackathon-SwampXII
+# Hackathon-SwampXII (Group: HEAR)
 Built at SwampHacksXII (First Timers Track)
 
 Live App: [Streamlit Link](https://hackathon-swampxii-j5j3u6hbuwptrjehde6ffm.streamlit.app/)
