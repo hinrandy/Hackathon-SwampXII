@@ -54,8 +54,13 @@ def html(block: str) -> None:
 @st.cache_data(show_spinner=False, ttl=3600)
 def gemini_outline(studytime, g1, method, assignment, absences, passed, estimate):
     from google import genai
+    from google.genai import types
 
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    # 25 s timeout (milliseconds) so a slow call fails instead of hanging forever
+    client = genai.Client(
+        api_key=st.secrets["GEMINI_API_KEY"],
+        http_options=types.HttpOptions(timeout=25000),
+    )
     prompt = (
         "You are a friendly academic coach. A student gave these early-semester "
         f"metrics: weekly study time level {studytime} (1: <2h, 2: 2-5h, 3: 5-10h, "
@@ -66,7 +71,20 @@ def gemini_outline(studytime, g1, method, assignment, absences, passed, estimate
         "sentence, specific and encouraging. Plain text only. Start every line "
         "with the character •. No headings, no markdown."
     )
-    resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    try:
+        # Newer Gemini models "think" before answering, which is slow. Keep it short.
+        resp = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_level="low"),
+            ),
+        )
+    except Exception as exc:
+        if "thinking" not in str(exc).lower():
+            raise
+        # This model doesn't accept that setting: retry with defaults
+        resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     return resp.text.strip()
 
 
@@ -498,10 +516,11 @@ else:
 inputs_key = (studytime, g1, completion_method, assignment_grade, absences)
 if want_outline:
     try:
-        text = gemini_outline(
-            studytime, g1, completion_method, assignment_grade, absences,
-            passed, headline_value,
-        )
+        with st.spinner("Asking Gemini..."):
+            text = gemini_outline(
+                studytime, g1, completion_method, assignment_grade, absences,
+                passed, headline_value,
+            )
         st.session_state["outline"] = {"key": inputs_key, "text": text, "error": None}
     except Exception as exc:
         st.session_state["outline"] = {
