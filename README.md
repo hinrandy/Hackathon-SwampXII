@@ -29,7 +29,7 @@ This project is a Grade Predictor that helps students see whether they are on tr
 
 ## Project Structure
 ```
-app.py                      #the Streamlit app
+app.py                       #the Streamlit app
 requirements.txt             # Python packages Streamlit Cloud installs
 model.pkl                    # trained model
 .streamlit/config.toml       # forces the light theme
