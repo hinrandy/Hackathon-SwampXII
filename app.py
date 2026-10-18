@@ -368,7 +368,7 @@ div[data-baseweb="popover"] li[role="option"]:hover { background: #eee !importan
 }
 .prediction-details {
     font-family: Arial, sans-serif;
-    font-size: 14px;
+    font-size: clamp(16px, 1.4vw, 22px);
     line-height: 1.6;
     color: #f5f5f5;
     margin-top: 12px;
