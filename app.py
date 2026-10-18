@@ -12,7 +12,9 @@ import streamlit.components.v1 as components
 # SETTINGS
 # ---------------------------------------------------------------------------
 MODEL_PATH = Path(__file__).parent / "modelG12.pkl"
-FEATURE_COLUMNS = ["studytime", "failures", "absences", "G1", "G2"]  # must match training order EXACTLY
+# Fallback column list. If the model knows its own feature names (scikit-learn
+# records them when trained on a DataFrame), the app uses those automatically.
+FEATURE_COLUMNS = ["studytime", "failures", "absences", "G1", "G2"]
 PASS_MARK = 10  # G3 >= 10 counts as passing
 # Tried in order; the first that answers wins. "-latest" aliases track Google's newest model of that size.
 GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"]
@@ -483,10 +485,10 @@ detail_line = ""      # bullet in the outline box
 
 if not demo_mode:
     try:
-        X = pd.DataFrame(
-            [{"studytime": studytime, "failures": failures, "absences": absences,
-              "G1": g1, "G2": g2}]
-        )[FEATURE_COLUMNS]
+        all_inputs = {"studytime": studytime, "failures": failures,
+                      "absences": absences, "G1": g1, "G2": g2}
+        columns = list(getattr(model, "feature_names_in_", FEATURE_COLUMNS))
+        X = pd.DataFrame([all_inputs])[columns]
         if hasattr(model, "predict_proba"):
             # Classifier: probability of the "passed" class
             prob = float(model.predict_proba(X)[0][1]) * 100
@@ -496,7 +498,7 @@ if not demo_mode:
             detail_line = f"Current Pass Probability: <b>{prob:.1f}%</b>"
         else:
             # Regressor: predicts the final grade (G3) directly
-            grade = max(0.0, min(20.0, float(model.predict(X)[0])))
+            grade = min(20.0, max(0.0, float(model.predict(X)[0])))  # keep within 0-20
             passed = grade >= PASS_MARK
             headline_value = f"{grade:.1f}/20"
             caption = "predicted final grade"
@@ -563,7 +565,7 @@ body_html = outline_html if outline_html else f"<p>• {advice}</p>"
 with right_col:
     with st.container(key="output-card"):
         if demo_mode:
-            reason = load_error or "model.pkl was not found next to app.py"
+            reason = load_error or "modelG12.pkl was not found next to app.py"
             html(
                 f"""
                 <div class="demo-banner">
