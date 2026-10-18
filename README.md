@@ -27,12 +27,13 @@ This project is a Grade Predictor that helps students see whether they are on tr
 - GitHub for version control and deployment.
 - Google Fonts (Finger Paint, Press Start 2P).
 
-**Project Structure**
-- app. py                      #the Streamlit app
-- requirements.txt             # Python packages Streamlit Cloud installs
-- model.pkl                    # trained model
-- .streamlit/confit.toml       # forces the light theme
-
+## Project Structure
+```
+app.py                      #the Streamlit app
+requirements.txt             # Python packages Streamlit Cloud installs
+model.pkl                    # trained model
+.streamlit/config.toml       # forces the light theme
+```
 **Use of AI Tools**\
 We used Claude (Anthropic) to help brainstorm and plan the project and to help write and debug parts of the code, including the Streamlit code and the Gemini integration. The Gemini API is part of the app itself.
 
