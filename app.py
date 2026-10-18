@@ -76,8 +76,8 @@ def gemini_outline(studytime, g1, g2, failures, absences, passed, estimate):
         f"4: >10h per week), first period grade G1 {g1_txt}, second period grade "
         f"G2 {g2_txt}, past class failures {failures}, absences {absences}. A simple model "
         f"estimates they are {'on track to pass' if passed else 'at risk of failing'} "
-        f"({estimate}). Write a short study outline: 3 to 4 bullet points, each one "
-        "sentence, specific and encouraging. Plain text only. Start every line "
+        f"({estimate}). Write a short study outline: exactly 3 bullet points, each one "
+        "sentence of at most 18 words, specific and encouraging. Plain text only. Start every line "
         "with the character •. No headings, no markdown."
     )
     def ask(model, with_thinking):
@@ -349,6 +349,8 @@ div[data-baseweb="popover"] li[role="option"]:hover { background: #eee !importan
     flex: 1 1 auto;
     width: 100%;
     min-height: 420px;
+    max-height: 56vh;      /* never taller than this, so the cards stay level */
+    overflow-y: auto;      /* long text scrolls inside the box */
     box-sizing: border-box;
     background: #326f51;
     border: 4px solid #fff;
@@ -373,12 +375,12 @@ div[data-baseweb="popover"] li[role="option"]:hover { background: #eee !importan
 }
 .prediction-details {
     font-family: Arial, sans-serif;
-    font-size: 14px;
+    font-size: clamp(16px, 1.25vw, 20px);
     line-height: 1.6;
     color: #f5f5f5;
     margin-top: 12px;
 }
-.prediction-details p { margin: 0 0 16px 0; }
+.prediction-details p { margin: 0 0 12px 0; }
 
 /* Demo-mode notice */
 .demo-banner {
@@ -416,12 +418,31 @@ sound_on = st.sidebar.toggle("Sound effects", value=True)
 # ---------------------------------------------------------------------------
 # LOAD MODEL (joblib.load also reads plain pickle files)
 # ---------------------------------------------------------------------------
+class CoefModel:
+    """Saved coefficients of modelG12.pkl (a LinearRegression). Used only if the
+    pickle file exists but cannot be loaded (e.g. scikit-learn version mismatch)."""
+    feature_names_in_ = ["studytime", "failures", "absences", "G1", "G2"]
+    coef_ = [0.01674189234322641, 0.018667169520834137, -0.008131078662362623,
+             0.12619798784538983, 0.8687211997814244]
+    intercept_ = 0.23642506426440413
+
+    def predict(self, X):
+        row = X[self.feature_names_in_].iloc[0]
+        return [self.intercept_ + sum(
+            c * float(row[f]) for c, f in zip(self.coef_, self.feature_names_in_)
+        )]
+
+
 @st.cache_resource
 def load_model(filename):
     try:
         return joblib.load(Path(__file__).parent / filename), None
-    except Exception as exc:
+    except FileNotFoundError as exc:
         return None, f"{type(exc).__name__}: {exc}"
+    except Exception:
+        if filename == "modelG12.pkl":
+            return CoefModel(), None
+        return None, f"{filename} could not be loaded (version mismatch?)"
 
 
 # ---------------------------------------------------------------------------
@@ -497,10 +518,10 @@ detail_line = ""      # bullet in the outline box
 
 if not demo_mode:
     try:
-        X = pd.DataFrame(
-            [{"studytime": studytime, "failures": failures, "absences": absences,
-              "G1": g1, "G2": g2}]
-        )[FEATURE_COLUMNS]
+        all_inputs = {"studytime": studytime, "failures": failures,
+                      "absences": absences, "G1": g1, "G2": g2}
+        columns = list(getattr(model, "feature_names_in_", FEATURE_COLUMNS))
+        X = pd.DataFrame([all_inputs])[columns]
         if hasattr(model, "predict_proba"):
             # Classifier: probability of the "passed" class
             prob = float(model.predict_proba(X)[0][1]) * 100
@@ -510,7 +531,7 @@ if not demo_mode:
             detail_line = f"Current Pass Probability: <b>{prob:.1f}%</b>"
         else:
             # Regressor: predicts the final grade (G3) directly
-            grade = max(0.0, min(20.0, float(model.predict(X)[0])))
+            grade = min(20.0, max(0.0, float(model.predict(X)[0])))  # keep within 0-20
             passed = grade >= PASS_MARK
             headline_value = f"{grade:.1f}/20"
             caption = "predicted final grade"
