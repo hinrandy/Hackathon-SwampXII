@@ -71,8 +71,8 @@ def gemini_outline(studytime, g1, g2, failures, absences, passed, estimate):
         f"4: >10h per week), first period grade G1 {g1}/20, second period grade "
         f"G2 {g2}/20, past class failures {failures}, absences {absences}. A simple model "
         f"estimates they are {'on track to pass' if passed else 'at risk of failing'} "
-        f"({estimate}). Write a short study outline: 3 to 4 bullet points, each one "
-        "sentence, specific and encouraging. Plain text only. Start every line "
+        f"({estimate}). Write a short study outline: exactly 3 bullet points, each one "
+        "sentence of at most 18 words, specific and encouraging. Plain text only. Start every line "
         "with the character •. No headings, no markdown."
     )
     def ask(model, with_thinking):
@@ -344,6 +344,8 @@ div[data-baseweb="popover"] li[role="option"]:hover { background: #eee !importan
     flex: 1 1 auto;
     width: 100%;
     min-height: 420px;
+    max-height: 56vh;      /* never taller than this, so the cards stay level */
+    overflow-y: auto;      /* long text scrolls inside the box */
     box-sizing: border-box;
     background: #326f51;
     border: 4px solid #fff;
@@ -368,12 +370,12 @@ div[data-baseweb="popover"] li[role="option"]:hover { background: #eee !importan
 }
 .prediction-details {
     font-family: Arial, sans-serif;
-    font-size: clamp(16px, 1.4vw, 22px);
+    font-size: clamp(16px, 1.25vw, 20px);
     line-height: 1.6;
     color: #f5f5f5;
     margin-top: 12px;
 }
-.prediction-details p { margin: 0 0 16px 0; }
+.prediction-details p { margin: 0 0 12px 0; }
 
 /* Demo-mode notice */
 .demo-banner {
