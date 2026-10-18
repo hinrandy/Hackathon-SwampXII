@@ -436,7 +436,7 @@ with left_col:
         html('<div class="section-heading">Input Metrics</div>')
 
         studytime = st.number_input(
-            "Weekly Hours Studied (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h):",
+            "Study Time (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h):",
             min_value=1, max_value=4, value=2, step=1,
         )
         g1 = st.number_input(
@@ -446,11 +446,11 @@ with left_col:
         # NOT used by the model yet. Wire these into the "honesty layer"
         # (weighted assignment average) before feeding the model.
         completion_method = st.selectbox(
-            "Method of Completion:",
+            "Failures:",
             options=["Standard", "Self-Study", "Group Study", "Tutoring"],
         )
         assignment_grade = st.number_input(
-            "Assignment Grade (0-100%):",
+            "Grades (G2 - Second Period Grade 0-20)",
             min_value=0, max_value=100, value=85, step=5,
         )
         absences = st.number_input(
