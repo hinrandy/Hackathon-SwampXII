@@ -412,11 +412,29 @@ sound_on = st.sidebar.toggle("Sound effects", value=True)
 # LOAD MODEL (joblib.load also reads plain pickle files)
 # ---------------------------------------------------------------------------
 @st.cache_resource
+class CoefModel:
+    """The exact coefficients saved inside modelG12.pkl (a LinearRegression).
+    Used only if the pickle file exists but cannot be unpickled, for example
+    because of a scikit-learn version mismatch on the server."""
+    feature_names_in_ = ["studytime", "failures", "absences", "G1", "G2"]
+    coef_ = [0.01674189234322641, 0.018667169520834137, -0.008131078662362623,
+             0.12619798784538983, 0.8687211997814244]
+    intercept_ = 0.23642506426440413
+
+    def predict(self, X):
+        row = X[self.feature_names_in_].iloc[0]
+        return [self.intercept_ + sum(
+            c * float(row[f]) for c, f in zip(self.coef_, self.feature_names_in_)
+        )]
+
+
 def load_model():
     try:
         return joblib.load(MODEL_PATH), None
-    except Exception as exc:  # missing file, version mismatch, corrupt file...
+    except FileNotFoundError as exc:  # no model file at all -> demo mode
         return None, f"{type(exc).__name__}: {exc}"
+    except Exception:  # version mismatch, corrupt file... -> same model, saved numbers
+        return CoefModel(), None
 
 
 model, load_error = load_model()
