@@ -1,4 +1,5 @@
 import base64
+import time
 from html import escape as esc
 from pathlib import Path
 
@@ -13,7 +14,8 @@ import streamlit.components.v1 as components
 MODEL_PATH = Path(__file__).parent / "model.pkl"
 FEATURE_COLUMNS = ["studytime", "absences", "G1"]  # must match training order
 PASS_MARK = 10  # G3 >= 10 counts as passing
-GEMINI_MODEL = "gemini-3.8-flash"  # copy the current model name from Google's quickstart if this one is retired
+# Tried in order; the first that answers wins. "-latest" aliases track Google's newest model of that size.
+GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"]
 
 PASS_COLOR = "#2f8f5b"  # circle colour when the student is on track
 FAIL_COLOR = "#d64545"  # circle colour when the student is at risk
@@ -56,10 +58,10 @@ def gemini_outline(studytime, g1, method, assignment, absences, passed, estimate
     from google import genai
     from google.genai import types
 
-    # 25 s timeout (milliseconds) so a slow call fails instead of hanging forever
+    # 12 s timeout per attempt (milliseconds) so a slow call fails instead of hanging
     client = genai.Client(
         api_key=st.secrets["GEMINI_API_KEY"],
-        http_options=types.HttpOptions(timeout=25000),
+        http_options=types.HttpOptions(timeout=12000),
     )
     prompt = (
         "You are a friendly academic coach. A student gave these early-semester "
@@ -71,21 +73,35 @@ def gemini_outline(studytime, g1, method, assignment, absences, passed, estimate
         "sentence, specific and encouraging. Plain text only. Start every line "
         "with the character •. No headings, no markdown."
     )
-    try:
-        # Newer Gemini models "think" before answering, which is slow. Keep it short.
-        resp = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
+    def ask(model, with_thinking):
+        config = None
+        if with_thinking:
+            # Newer Gemini models "think" before answering, which is slow. Keep it short.
+            config = types.GenerateContentConfig(
                 thinking_config=types.ThinkingConfig(thinking_level="low"),
-            ),
-        )
-    except Exception as exc:
-        if "thinking" not in str(exc).lower():
-            raise
-        # This model doesn't accept that setting: retry with defaults
-        resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-    return resp.text.strip()
+            )
+        return client.models.generate_content(model=model, contents=prompt, config=config)
+
+    last_exc = None
+    for model in GEMINI_MODELS:
+        for attempt in range(2):  # a 503 "high demand" is usually gone a moment later
+            try:
+                try:
+                    resp = ask(model, with_thinking=True)
+                except Exception as exc:
+                    if "thinking" not in str(exc).lower():
+                        raise
+                    resp = ask(model, with_thinking=False)  # model rejects that setting
+                if resp.text:
+                    return resp.text.strip()
+                break
+            except Exception as exc:
+                last_exc = exc
+                if "503" in str(exc) or "UNAVAILABLE" in str(exc):
+                    time.sleep(1.5)  # busy: retry same model once
+                    continue
+                break  # 404 / 504 / other: go to the next model
+    raise last_exc or RuntimeError("Gemini returned an empty answer")
 
 
 def outline_to_html(text: str) -> str:
@@ -436,7 +452,7 @@ with left_col:
         html('<div class="section-heading">Input Metrics</div>')
 
         studytime = st.number_input(
-            "Study Time (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h):",
+            "Weekly Hours Studied (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h):",
             min_value=1, max_value=4, value=2, step=1,
         )
         g1 = st.number_input(
@@ -446,11 +462,11 @@ with left_col:
         # NOT used by the model yet. Wire these into the "honesty layer"
         # (weighted assignment average) before feeding the model.
         completion_method = st.selectbox(
-            "Failures:",
+            "Method of Completion:",
             options=["Standard", "Self-Study", "Group Study", "Tutoring"],
         )
         assignment_grade = st.number_input(
-            "Grades (G2 - Second Period Grade 0-20)",
+            "Assignment Grade (0-100%):",
             min_value=0, max_value=100, value=85, step=5,
         )
         absences = st.number_input(
