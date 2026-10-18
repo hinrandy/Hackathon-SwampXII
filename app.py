@@ -11,8 +11,12 @@ import streamlit.components.v1 as components
 # ---------------------------------------------------------------------------
 # SETTINGS
 # ---------------------------------------------------------------------------
-MODEL_PATH = Path(__file__).parent / "modelG12.pkl"
-FEATURE_COLUMNS = ["studytime", "failures", "absences", "G1", "G2"]  # must match training order EXACTLY
+STAGES = {
+    "Start of term": ("model_start.pkl", ["studytime", "failures", "absences"]),
+    "After first grade": ("modelG1.pkl", ["studytime", "failures", "absences", "G1"]),
+    "After second grade": ("modelG12.pkl", ["studytime", "failures", "absences", "G1", "G2"]),
+}
+TYPICAL_ERROR = {"Start of term": 2.4, "After first grade": 1.2, "After second grade": 0.6}
 PASS_MARK = 10  # G3 >= 10 counts as passing
 # Tried in order; the first that answers wins. "-latest" aliases track Google's newest model of that size.
 GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"]
@@ -58,6 +62,9 @@ def gemini_outline(studytime, g1, g2, failures, absences, passed, estimate):
     from google import genai
     from google.genai import types
 
+    g1_txt = f"{g1}/20" if g1 is not None else "not available yet"
+    g2_txt = f"{g2}/20" if g2 is not None else "not available yet"
+
     # 12 s timeout per attempt (milliseconds) so a slow call fails instead of hanging
     client = genai.Client(
         api_key=st.secrets["GEMINI_API_KEY"],
@@ -66,8 +73,8 @@ def gemini_outline(studytime, g1, g2, failures, absences, passed, estimate):
     prompt = (
         "You are a friendly academic coach. A student gave these early-semester "
         f"metrics: study time level {studytime} (1: <2h, 2: 2-5h, 3: 5-10h, "
-        f"4: >10h per week), first period grade G1 {g1}/20, second period grade "
-        f"G2 {g2}/20, past class failures {failures}, absences {absences}. A simple model "
+        f"4: >10h per week), first period grade G1 {g1_txt}, second period grade "
+        f"G2 {g2_txt}, past class failures {failures}, absences {absences}. A simple model "
         f"estimates they are {'on track to pass' if passed else 'at risk of failing'} "
         f"({estimate}). Write a short study outline: 3 to 4 bullet points, each one "
         "sentence, specific and encouraging. Plain text only. Start every line "
@@ -410,14 +417,11 @@ sound_on = st.sidebar.toggle("Sound effects", value=True)
 # LOAD MODEL (joblib.load also reads plain pickle files)
 # ---------------------------------------------------------------------------
 @st.cache_resource
-def load_model():
+def load_model(filename):
     try:
-        return joblib.load(MODEL_PATH), None
-    except Exception as exc:  # missing file, version mismatch, corrupt file...
+        return joblib.load(Path(__file__).parent / filename), None
+    except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
-
-
-model, load_error = load_model()
 
 
 # ---------------------------------------------------------------------------
@@ -450,19 +454,26 @@ with left_col:
 
     with st.container(key="input-card"):
         html('<div class="section-heading">Input Metrics</div>')
+        stage = st.selectbox(
+            "Where are you in the term?", list(STAGES.keys()), index=2
+        )
 
         studytime = st.number_input(
             "Study Time (1: <2h, 2: 2-5h, 3: 5-10h, 4: >10h per week):",
             min_value=1, max_value=4, value=2, step=1,
         )
-        g1 = st.number_input(
-            "Grades (G1 - First Period Grade 0-20):",
-            min_value=0, max_value=20, value=12, step=1,
-        )
-        g2 = st.number_input(
-            "Grades (G2 - Second Period Grade 0-20):",
-            min_value=0, max_value=20, value=12, step=1,
-        )
+
+        g1 = g2 = None
+        if stage != "Start of term":
+            g1 = st.number_input(
+                "Grades (G1 - First Period Grade 0-20):",
+                min_value=0, max_value=20, value=12, step=1,
+            )
+        if stage == "After second grade":
+            g2 = st.number_input(
+                "Grades (G2 - Second Period Grade 0-20):",
+                min_value=0, max_value=20, value=12, step=1,
+            )
         failures = st.number_input(
             "Failures (past class failures 0-3):",
             min_value=0, max_value=3, value=0, step=1,
@@ -476,6 +487,9 @@ with left_col:
 # ---------------------------------------------------------------------------
 # PREDICTION
 # ---------------------------------------------------------------------------
+# Pick the model for the chosen stage (must come after the dropdown)
+model_file, FEATURE_COLUMNS = STAGES[stage]
+model, load_error = load_model(model_file)
 demo_mode = model is None
 headline_value = ""   # big text inside the circle
 caption = ""          # small label under it
@@ -500,14 +514,15 @@ if not demo_mode:
             passed = grade >= PASS_MARK
             headline_value = f"{grade:.1f}/20"
             caption = "predicted final grade"
-            detail_line = f"Predicted Final Grade: <b>{grade:.1f}/20</b>"
+            detail_line = f"Predicted Final Grade: <b>{grade:.1f}/20</b> (typically within ±{TYPICAL_ERROR[stage]})"
     except Exception as exc:
         load_error = f"Model loaded but prediction failed: {type(exc).__name__}: {exc}"
         demo_mode = True
 
 if demo_mode:
     # Rule-of-thumb stand-in so the UI still works. NOT a trained model.
-    avg_grade = (g1 + g2) / 2
+    grades = [v for v in (g1, g2) if v is not None]
+    avg_grade = sum(grades) / len(grades) if grades else 10
     passed = avg_grade >= PASS_MARK and absences < 10 and failures < 2
     prob = min(95.0, max(15.0, (avg_grade * 4) + (studytime * 5) - (absences * 2) - (failures * 10)))
     headline_value = f"{prob:.0f}%"
@@ -519,19 +534,21 @@ badge_text = "PASS" if passed else "FAIL"
 
 if passed:
     status_line = "✅ <b>On Track to Pass!</b>"
-    advice = (
-        f"Your G1 (<b>{g1}/20</b>) and G2 (<b>{g2}/20</b>) scores and absence "
-        f"count (<b>{absences}</b>) contribute to your prediction."
-    )
+    bits = []
+    if g1 is not None:
+        bits.append(f"G1 (<b>{g1}/20</b>)")
+    if g2 is not None:
+        bits.append(f"G2 (<b>{g2}/20</b>)")
+    bits.append(f"absence count (<b>{absences}</b>)")
+    advice = "Your " + " and ".join(bits) + " contribute to your prediction."
 else:
     status_line = "⚠️ <b>Risk of Failing</b>"
     advice = (
         "Consider increasing study time, reducing absences and raising "
         "your grades to improve your academic performance."
     )
-
 # GEMINI OUTLINE (only runs when the button is pressed)
-inputs_key = (studytime, g1, g2, failures, absences)
+inputs_key = (stage, studytime, g1, g2, failures, absences)
 if want_outline:
     try:
         with st.spinner("Asking Gemini..."):
@@ -563,7 +580,7 @@ body_html = outline_html if outline_html else f"<p>• {advice}</p>"
 with right_col:
     with st.container(key="output-card"):
         if demo_mode:
-            reason = load_error or "model.pkl was not found next to app.py"
+            reason = load_error or f"{model_file} was not found next to app.py"
             html(
                 f"""
                 <div class="demo-banner">
